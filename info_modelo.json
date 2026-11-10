@@ -1,144 +1,158 @@
 {
-  "modelo": "Regresión logística con SMOTE",
-  "semilla": 42,
-  "distancias": [
-    "disedge09",
+  "modelo": "Regresión logística con SMOTE (Modelo B, 5 predictores)",
+  "predictores": [
+    "lat",
     "Distriv",
     "dist_roads",
     "d_IR",
     "d_II_III"
   ],
-  "categoricas": [
-    "rec2001c1"
+  "variables_log": [
+    "d_IR",
+    "d_II_III"
   ],
   "nombres": {
-    "disedge09": "Distancia al borde del bosque en 2009",
+    "lat": "Latitud",
     "Distriv": "Distancia a ríos",
     "dist_roads": "Distancia a vías",
     "d_IR": "Distancia a resguardos indígenas",
-    "d_II_III": "Distancia a áreas protegidas (categorías II y III)",
-    "rec2001c1": "Clase de cobertura en 2001"
+    "d_II_III": "Distancia a áreas protegidas (categorías II y III)"
   },
-  "umbral": 0.45134168355151955,
-  "meta_recall": 0.8,
+  "escenarios": {
+    "Máxima detección": {
+      "umbral": 0.46,
+      "descripcion": "Prioriza encontrar la mayor cantidad de zonas deforestadas (recall ≥ 0,80 en validación espacial).",
+      "prueba": {
+        "umbral": 0.46,
+        "recall": 0.8105263157894737,
+        "precision": 0.05703703703703704,
+        "f1": 0.10657439446366782,
+        "zonas_senaladas": 1350,
+        "pct_senaladas": 40.822497732083455,
+        "tp": 77,
+        "fp": 1273,
+        "tn": 1939,
+        "fn": 18
+      }
+    },
+    "Capacidad de inspección limitada": {
+      "umbral": 0.6423,
+      "descripcion": "Señala solo el 20 % de zonas con mayor probabilidad, para cuando no se pueden revisar todas.",
+      "prueba": {
+        "umbral": 0.6423,
+        "recall": 0.4842105263157895,
+        "precision": 0.06292749658002736,
+        "f1": 0.11138014527845036,
+        "zonas_senaladas": 731,
+        "pct_senaladas": 22.10462654974297,
+        "tp": 46,
+        "fp": 685,
+        "tn": 2527,
+        "fn": 49
+      }
+    }
+  },
+  "validacion_espacial": {
+    "recall": {
+      "media": 0.7565749676296389,
+      "desv": 0.1126278650387937
+    },
+    "precision": {
+      "media": 0.12892981096216688,
+      "desv": 0.060242665198601844
+    },
+    "f1": {
+      "media": 0.214824205809585,
+      "desv": 0.09051987649395846
+    },
+    "roc_auc": {
+      "media": 0.7811339249888756,
+      "desv": 0.10987680031703743
+    },
+    "pr_auc": {
+      "media": 0.15712707925393754,
+      "desv": 0.07180526799030132
+    }
+  },
   "rangos": {
-    "disedge09": {
-      "min": 0.0,
-      "max": 1913.43,
-      "p01": 0.0,
-      "p99": 949.665800000008,
-      "mediana": 0.0
+    "lat": {
+      "min": 2.034,
+      "max": 2.900179325,
+      "mediana": 2.500579325
     },
     "Distriv": {
       "min": 0.0,
-      "max": 0.0596153,
-      "p01": 0.0,
-      "p99": 0.04526969000000001,
-      "mediana": 0.012727
+      "max": 0.0579485,
+      "mediana": 0.01333
     },
     "dist_roads": {
       "min": 0.0373334,
-      "max": 1.52496,
-      "p01": 0.1082521,
-      "p99": 1.452325,
-      "mediana": 0.7013
+      "max": 1.52694,
+      "mediana": 0.7132835
     },
     "d_IR": {
       "min": 0.0,
-      "max": 18161.0335,
-      "p01": 0.0,
-      "p99": 14910.109570000006,
-      "mediana": 0.393528
+      "max": 18757.1654,
+      "mediana": 0.377247
     },
     "d_II_III": {
       "min": 0.0,
-      "max": 100797.6039,
-      "p01": 0.4631807,
-      "p99": 54870.96822000019,
-      "mediana": 1.28231
+      "max": 108175.2922,
+      "mediana": 1.241685
     }
   },
-  "clases_rec2001c1": [
-    0,
-    2,
-    3,
-    4,
-    5,
-    6
-  ],
-  "clase_frecuente": 2,
   "coeficientes": {
-    "distancias__disedge09": 0.3837422453845231,
-    "distancias__Distriv": -0.45064654429460943,
-    "distancias__dist_roads": -1.1883189602928466,
-    "distancias__d_IR": 0.7591394763344477,
-    "distancias__d_II_III": -0.27801986742155244,
-    "categoricas__rec2001c1_2": 0.8628994166736307,
-    "categoricas__rec2001c1_3": -0.46755709171313364,
-    "categoricas__rec2001c1_4": 0.7784251471131797,
-    "categoricas__rec2001c1_5": -1.78331419038541,
-    "categoricas__rec2001c1_6": -0.4659355856139059
+    "d_IR": 0.8416689318108127,
+    "d_II_III": -0.36995687543458644,
+    "lat": -0.16584316534074184,
+    "Distriv": -0.634193797657465,
+    "dist_roads": -1.0777703121646773
   },
-  "intercepto": -1.3852014952649068,
   "metricas_prueba": {
-    "registros": 5028,
-    "positivos": 208,
-    "tp": 173,
-    "fn": 35,
-    "fp": 1411,
-    "tn": 3409,
-    "recall": 0.8317307692307693,
-    "precision": 0.10921717171717171,
-    "roc_auc": 0.8457269390360677,
-    "pr_auc": 0.22115001914749377,
-    "prevalencia": 0.04136833731105807
-  },
-  "metricas_bloques_20km": {
-    "roc_auc": 0.8152254703477286,
-    "roc_auc_sd": 0.047827106175140216,
-    "pr_auc": 0.19443352904264916,
-    "bloques": 44
+    "registros": 3307,
+    "positivos": 95,
+    "bloques_prueba": 9,
+    "roc_auc": 0.7486432457232746,
+    "pr_auc": 0.06425120570449457,
+    "prevalencia": 0.028726942848503176
   },
   "ejemplos": {
-    "Zona deforestada detectada (riesgo alto)": {
+    "Zona deforestada con riesgo alto": {
       "valores": {
-        "disedge09": 42.4264,
-        "Distriv": 0.01257,
-        "dist_roads": 0.0445,
-        "d_IR": 1595.5014,
-        "d_II_III": 0.0,
-        "rec2001c1": 4
+        "lat": 2.092,
+        "Distriv": 0.00479,
+        "dist_roads": 0.229,
+        "d_IR": 15107.6961,
+        "d_II_III": 35366.4407
       },
       "real": 1
     },
-    "Zona deforestada que el modelo no detectó": {
+    "Zona deforestada con riesgo intermedio": {
       "valores": {
-        "disedge09": 0.0,
-        "Distriv": 0.0207513,
-        "dist_roads": 0.680026,
-        "d_IR": 0.0580235,
-        "d_II_III": 1.09503,
-        "rec2001c1": 5
+        "lat": 2.331859325,
+        "Distriv": 0.00800001,
+        "dist_roads": 0.499113,
+        "d_IR": 0.440007,
+        "d_II_III": 0.741972
       },
       "real": 1
     },
     "Zona sin deforestación (riesgo bajo)": {
       "valores": {
-        "disedge09": 0.0,
-        "Distriv": 0.0266667,
-        "dist_roads": 1.32464,
-        "d_IR": 0.431247,
-        "d_II_III": 1.66971,
-        "rec2001c1": 2
+        "lat": 2.278579325,
+        "Distriv": 0.0151111,
+        "dist_roads": 1.41202,
+        "d_IR": 0.40031,
+        "d_II_III": 1.76684
       },
       "real": 0
     }
   },
   "versiones": {
     "python": "3.13.17",
-    "scikit-learn": "1.9.1",
-    "imbalanced-learn": "0.14.2",
-    "pandas": "3.0.5",
-    "numpy": "2.5.3"
+    "scikit-learn": "1.6.1",
+    "imbalanced-learn": "0.13.0",
+    "pandas": "3.1.1",
+    "numpy": "2.5.4"
   }
 }

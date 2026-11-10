@@ -1,179 +1,185 @@
 """
-Entrena el modelo final y guarda todo lo que necesita la aplicación de Streamlit.
+Entrena el modelo final del equipo (8.1) y guarda lo que necesita la aplicación de Streamlit.
+Reproduce exactamente el notebook del equipo: regresión logística con 5 predictores (Modelo B),
+partición espacial por bloques de 20 km y dos escenarios de umbral.
 
 Uso:
-    python entrenar_modelo.py "bothgridandfire (1).csv"
+    python entrenar_modelo.py "bothgridandfire.csv"
 
 Salidas (en la misma carpeta):
-    modelo_final.joblib   -> pipeline completo (preprocesamiento + SMOTE + regresión logística)
-    info_modelo.json      -> umbral, variables, rangos de entrenamiento, métricas, coeficientes y ejemplos
+    modelo_final.joblib   -> pipeline completo (log + z-score + SMOTE + regresión logística)
+    info_modelo.json      -> umbrales, variables, rangos, métricas, coeficientes y ejemplos
 """
 import json
 import sys
+import warnings
 from pathlib import Path
 
+import imblearn
 import joblib
 import numpy as np
 import pandas as pd
 import sklearn
-import imblearn
 from imblearn.over_sampling import SMOTE
 from imblearn.pipeline import Pipeline as ImbPipeline
+from pyproj import Transformer
 from sklearn.compose import ColumnTransformer
-from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import (average_precision_score, confusion_matrix, precision_recall_curve,
+from sklearn.metrics import (average_precision_score, confusion_matrix, f1_score,
                              precision_score, recall_score, roc_auc_score)
-from sklearn.model_selection import (StratifiedGroupKFold, StratifiedKFold, cross_val_predict,
-                                     cross_validate, train_test_split)
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, StandardScaler
+from sklearn.model_selection import StratifiedGroupKFold
+from sklearn.preprocessing import FunctionTransformer, StandardScaler
+
+warnings.filterwarnings("ignore", message="Unknown solver options")  # aviso inofensivo de SciPy reciente
 
 # ---------------------------------------------------------------------------
-# Configuración (si el equipo cambia el modelo final en la 8.1, se ajusta aquí)
+# Configuración (igual al notebook del equipo)
 # ---------------------------------------------------------------------------
-SEMILLA = 42
 OBJETIVO = "def"
-DISTANCIAS = ["disedge09", "Distriv", "dist_roads", "d_IR", "d_II_III"]   # log(1 + x) + z-score
-CATEGORICAS = ["rec2001c1"]                                               # códigos de cobertura en 2001
-# Excluidas: yloss y fire/yfire (fuga), dist_10los...dist_los14 (temporalidad desconocida),
-# lat/long (describen el lugar; solo se usan para los bloques espaciales) y rec2009c1 (medida en 2009,
-# después de buena parte de las pérdidas).
-META_RECALL = 0.80
-TAM_BLOQUE_KM = 20
+PREDICTORES = ["lat", "Distriv", "dist_roads", "d_IR", "d_II_III"]   # Modelo B (sin long)
+VARIABLES_LOG = ["d_IR", "d_II_III"]                                  # log(1 + x)
+TAM_BLOQUE_M = 20_000                                                 # bloques de 20 km
+SEMILLA_PARTICION = 42                                                # partición entrenamiento/prueba
+SEMILLA_CV = 40                                                       # validación espacial definitiva
+META_RECALL = 0.80                                                    # escenario 1
+CAPACIDAD = 0.20                                                      # escenario 2: 20 % de zonas
 
 NOMBRES = {
-    "disedge09": "Distancia al borde del bosque en 2009",
+    "lat": "Latitud",
     "Distriv": "Distancia a ríos",
     "dist_roads": "Distancia a vías",
     "d_IR": "Distancia a resguardos indígenas",
     "d_II_III": "Distancia a áreas protegidas (categorías II y III)",
-    "rec2001c1": "Clase de cobertura en 2001",
 }
 
 
-def crear_pipeline():
-    distancias = Pipeline([
-        ("imputacion", SimpleImputer(strategy="median")),
-        ("logaritmo", FunctionTransformer(np.log1p, feature_names_out="one-to-one")),
-        ("escalamiento", StandardScaler()),
-    ])
-    categoricas = Pipeline([
-        ("imputacion", SimpleImputer(strategy="most_frequent")),
-        ("onehot", OneHotEncoder(handle_unknown="ignore", drop="first", sparse_output=False)),
-    ])
-    preprocesamiento = ColumnTransformer([
-        ("distancias", distancias, DISTANCIAS),
-        ("categoricas", categoricas, CATEGORICAS),
-    ], remainder="drop")
+def crear_modelo():
     return ImbPipeline([
-        ("preprocesamiento", preprocesamiento),
-        ("balanceo", SMOTE(sampling_strategy="auto", random_state=SEMILLA, k_neighbors=5)),
-        ("modelo", LogisticRegression(max_iter=2000, random_state=SEMILLA)),
+        ("transformacion_log", ColumnTransformer(
+            transformers=[("log", FunctionTransformer(np.log1p, feature_names_out="one-to-one"), VARIABLES_LOG)],
+            remainder="passthrough", verbose_feature_names_out=False)),
+        ("escalamiento", StandardScaler()),
+        ("smote", SMOTE(random_state=42)),
+        ("clasificador", LogisticRegression(max_iter=2000, random_state=42)),
     ])
+
+
+def evaluar(y, prob, umbral):
+    pred = (prob >= umbral).astype(int)
+    tn, fp, fn, tp = confusion_matrix(y, pred).ravel()
+    return {"umbral": float(umbral), "recall": float(recall_score(y, pred)),
+            "precision": float(precision_score(y, pred, zero_division=0)),
+            "f1": float(f1_score(y, pred, zero_division=0)),
+            "zonas_senaladas": int(tp + fp), "pct_senaladas": float((tp + fp) / len(y) * 100),
+            "tp": int(tp), "fp": int(fp), "tn": int(tn), "fn": int(fn)}
 
 
 def main(ruta_csv):
     df = pd.read_csv(ruta_csv)
-    predictores = DISTANCIAS + CATEGORICAS
-    X, y = df[predictores], df[OBJETIVO].astype(int)
+    X, y = df[PREDICTORES], df[OBJETIVO].astype(int)
 
-    # 1. Partición estratificada 70/30 (la misma de la segunda entrega)
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.30, random_state=SEMILLA, stratify=y)
+    # 1. Bloques de 20 km con coordenadas proyectadas a metros (EPSG:3116, MAGNA-SIRGAS Bogotá)
+    transformador = Transformer.from_crs("EPSG:4326", "EPSG:3116", always_xy=True)
+    x_m, y_m = transformador.transform(df["long"].values, df["lat"].values)
+    grupos = pd.Series(np.floor(x_m / TAM_BLOQUE_M).astype(int).astype(str) + "_" +
+                       np.floor(y_m / TAM_BLOQUE_M).astype(int).astype(str), index=df.index)
 
-    # 2. Umbral con probabilidades fuera de fold del entrenamiento (sin tocar la prueba)
-    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=SEMILLA)
-    prob_oof = cross_val_predict(crear_pipeline(), X_train, y_train, cv=cv,
-                                 method="predict_proba", n_jobs=-1)[:, 1]
-    precisiones, recalls, umbrales = precision_recall_curve(y_train, prob_oof)
-    cumple = recalls[:-1] >= META_RECALL
-    umbral = float(umbrales[cumple][np.argmax(precisiones[:-1][cumple])])
+    # 2. Partición espacial: el primer fold de StratifiedGroupKFold es la prueba
+    separador = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=SEMILLA_PARTICION)
+    train_idx, test_idx = next(separador.split(X, y, groups=grupos))
+    X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
+    y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
+    grupos_train = grupos.iloc[train_idx]
 
-    # 3. Validación cruzada por bloques espaciales de 20 km (solo como referencia de generalización)
-    coord = df.loc[X_train.index, ["lat", "long"]]
-    grupos = (np.floor(coord["lat"] * 111 / TAM_BLOQUE_KM).astype(int).astype(str) + "_" +
-              np.floor(coord["long"] * 111 / TAM_BLOQUE_KM).astype(int).astype(str))
-    r_bloques = cross_validate(crear_pipeline(), X_train, y_train, groups=grupos,
-                               cv=StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=SEMILLA),
-                               scoring={"roc_auc": "roc_auc", "pr_auc": "average_precision"}, n_jobs=-1)
+    # 3. Probabilidades fuera de fold con validación espacial (semilla 40)
+    cv = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=SEMILLA_CV)
+    prob_oof = np.zeros(len(X_train))
+    folds = []
+    for tr, va in cv.split(X_train, y_train, groups=grupos_train):
+        p_va = crear_modelo().fit(X_train.iloc[tr], y_train.iloc[tr]).predict_proba(X_train.iloc[va])[:, 1]
+        prob_oof[va] = p_va
+        y_va, pred_va = y_train.iloc[va], (p_va >= 0.5).astype(int)
+        folds.append({"recall": recall_score(y_va, pred_va), "precision": precision_score(y_va, pred_va, zero_division=0),
+                      "f1": f1_score(y_va, pred_va, zero_division=0), "roc_auc": roc_auc_score(y_va, p_va),
+                      "pr_auc": average_precision_score(y_va, p_va)})
+    folds = pd.DataFrame(folds)
+    validacion_espacial = {m: {"media": float(folds[m].mean()), "desv": float(folds[m].std())} for m in folds}
 
-    # 4. Modelo final: se ajusta con todo el entrenamiento y se evalúa una vez en prueba
-    modelo = crear_pipeline().fit(X_train, y_train)
+    # 4. Escenario 1: recall >= 0,80 con la mayor precisión (rejilla de 0,01 a 0,99)
+    filas = []
+    for u in np.arange(0.01, 1.00, 0.01):
+        pred = (prob_oof >= u).astype(int)
+        filas.append((u, recall_score(y_train, pred, zero_division=0), precision_score(y_train, pred, zero_division=0)))
+    tabla = pd.DataFrame(filas, columns=["umbral", "recall", "precision"])
+    umbral_1 = float(round(tabla[tabla.recall >= META_RECALL].sort_values("precision", ascending=False).iloc[0].umbral, 2))
+
+    # 5. Escenario 2: señalar aproximadamente el 20 % de las zonas con mayor probabilidad
+    umbral_2 = float(round(1 - np.quantile(1 - prob_oof, CAPACIDAD), 4))
+
+    # 6. Modelo final: se ajusta con todo el entrenamiento y se evalúa una vez en prueba
+    modelo = crear_modelo().fit(X_train, y_train)
     prob_test = modelo.predict_proba(X_test)[:, 1]
-    pred_test = (prob_test >= umbral).astype(int)
-    tn, fp, fn, tp = confusion_matrix(y_test, pred_test).ravel()
 
-    # 5. Coeficientes (para explicar cada predicción en la app)
-    nombres_transf = list(modelo.named_steps["preprocesamiento"].get_feature_names_out())
-    coefs = modelo.named_steps["modelo"].coef_.ravel()
+    nombres_transf = list(modelo.named_steps["transformacion_log"].get_feature_names_out())
+    coefs = modelo.named_steps["clasificador"].coef_.ravel()
 
-    # 6. Rangos de entrenamiento (para verificar la coherencia de las entradas)
-    rangos = {}
-    for c in DISTANCIAS:
-        s = X_train[c]
-        rangos[c] = {"min": float(s.min()), "max": float(s.max()), "p01": float(s.quantile(.01)),
-                     "p99": float(s.quantile(.99)), "mediana": float(s.median())}
-    clases = sorted(int(v) for v in X_train["rec2001c1"].dropna().unique())
+    rangos = {c: {"min": float(X_train[c].min()), "max": float(X_train[c].max()),
+                  "mediana": float(X_train[c].median())} for c in PREDICTORES}
 
     # 7. Ejemplos reales del conjunto de prueba para la demostración
     prueba = X_test.copy()
     prueba["real"], prueba["prob"] = y_test.values, prob_test
+    pos, neg = prueba[prueba.real == 1], prueba[prueba.real == 0]
     ejemplos = {
-        "Zona deforestada detectada (riesgo alto)":
-            prueba[(prueba.real == 1)].sort_values("prob", ascending=False).iloc[0],
-        "Zona deforestada que el modelo no detectó":
-            prueba[(prueba.real == 1) & (prueba.prob < umbral)].sort_values("prob").iloc[0],
-        "Zona sin deforestación (riesgo bajo)":
-            prueba[(prueba.real == 0)].sort_values("prob").iloc[len(prueba[prueba.real == 0]) // 20],
+        "Zona deforestada con riesgo alto": pos.sort_values("prob", ascending=False).iloc[2],
+        "Zona deforestada con riesgo intermedio": pos.iloc[(pos.prob - (umbral_1 + umbral_2) / 2).abs().argsort().iloc[0]],
+        "Zona sin deforestación (riesgo bajo)": neg.sort_values("prob").iloc[len(neg) // 10],
     }
-    ejemplos = {k: {"valores": {c: (int(v[c]) if c in CATEGORICAS else float(v[c])) for c in predictores},
-                    "real": int(v["real"])} for k, v in ejemplos.items()}
+    ejemplos = {k: {"valores": {c: float(v[c]) for c in PREDICTORES}, "real": int(v["real"])}
+                for k, v in ejemplos.items()}
 
     info = {
-        "modelo": "Regresión logística con SMOTE",
-        "semilla": SEMILLA,
-        "distancias": DISTANCIAS,
-        "categoricas": CATEGORICAS,
+        "modelo": "Regresión logística con SMOTE (Modelo B, 5 predictores)",
+        "predictores": PREDICTORES,
+        "variables_log": VARIABLES_LOG,
         "nombres": NOMBRES,
-        "umbral": umbral,
-        "meta_recall": META_RECALL,
+        "escenarios": {
+            "Máxima detección": {
+                "umbral": umbral_1,
+                "descripcion": "Prioriza encontrar la mayor cantidad de zonas deforestadas (recall ≥ 0,80 en validación espacial).",
+                "prueba": evaluar(y_test, prob_test, umbral_1)},
+            "Capacidad de inspección limitada": {
+                "umbral": umbral_2,
+                "descripcion": "Señala solo el 20 % de zonas con mayor probabilidad, para cuando no se pueden revisar todas.",
+                "prueba": evaluar(y_test, prob_test, umbral_2)},
+        },
+        "validacion_espacial": validacion_espacial,
         "rangos": rangos,
-        "clases_rec2001c1": clases,
-        "clase_frecuente": int(X_train["rec2001c1"].mode()[0]),
         "coeficientes": dict(zip(nombres_transf, map(float, coefs))),
-        "intercepto": float(modelo.named_steps["modelo"].intercept_[0]),
-        "metricas_prueba": {
-            "registros": int(len(y_test)), "positivos": int(y_test.sum()),
-            "tp": int(tp), "fn": int(fn), "fp": int(fp), "tn": int(tn),
-            "recall": float(recall_score(y_test, pred_test)),
-            "precision": float(precision_score(y_test, pred_test)),
-            "roc_auc": float(roc_auc_score(y_test, prob_test)),
-            "pr_auc": float(average_precision_score(y_test, prob_test)),
-            "prevalencia": float(y_test.mean()),
-        },
-        "metricas_bloques_20km": {
-            "roc_auc": float(r_bloques["test_roc_auc"].mean()), "roc_auc_sd": float(r_bloques["test_roc_auc"].std()),
-            "pr_auc": float(r_bloques["test_pr_auc"].mean()), "bloques": int(grupos.nunique()),
-        },
+        "metricas_prueba": {"registros": int(len(y_test)), "positivos": int(y_test.sum()),
+                            "bloques_prueba": int(grupos.iloc[test_idx].nunique()),
+                            "roc_auc": float(roc_auc_score(y_test, prob_test)),
+                            "pr_auc": float(average_precision_score(y_test, prob_test)),
+                            "prevalencia": float(y_test.mean())},
         "ejemplos": ejemplos,
         "versiones": {"python": sys.version.split()[0], "scikit-learn": sklearn.__version__,
-                      "imbalanced-learn": imblearn.__version__, "pandas": pd.__version__,
-                      "numpy": np.__version__},
+                      "imbalanced-learn": imblearn.__version__, "pandas": pd.__version__, "numpy": np.__version__},
     }
 
     carpeta = Path(__file__).resolve().parent
     joblib.dump(modelo, carpeta / "modelo_final.joblib")
-    (carpeta / "info_modelo.json").write_text(json.dumps(info, indent=2, ensure_ascii=False))
+    (carpeta / "info_modelo.json").write_text(json.dumps(info, indent=2, ensure_ascii=False), encoding="utf-8")
 
+    print(f"Entrenamiento: {len(y_train)} zonas | Prueba: {len(y_test)} zonas ({int(y_test.sum())} deforestadas)")
+    for nombre, e in info["escenarios"].items():
+        p = e["prueba"]
+        print(f"{nombre}: umbral {e['umbral']} | recall {p['recall']:.4f} | precisión {p['precision']:.4f} | "
+              f"señaladas {p['zonas_senaladas']} ({p['pct_senaladas']:.1f} %) | TP {p['tp']} FN {p['fn']} FP {p['fp']}")
+    print("Validación espacial (umbral 0,5):", {k: round(v["media"], 4) for k, v in validacion_espacial.items()})
     m = info["metricas_prueba"]
-    print(f"Umbral: {umbral:.3f}")
-    print(f"Prueba: {m['tp']} de {m['positivos']} detectadas | recall {m['recall']:.3f} | "
-          f"precisión {m['precision']:.3f} | ROC-AUC {m['roc_auc']:.3f} | PR-AUC {m['pr_auc']:.3f}")
-    b = info["metricas_bloques_20km"]
-    print(f"Bloques de 20 km: ROC-AUC {b['roc_auc']:.3f} ± {b['roc_auc_sd']:.3f} | PR-AUC {b['pr_auc']:.3f}")
-    print("Guardados: modelo_final.joblib, info_modelo.json")
+    print(f"ROC-AUC prueba {m['roc_auc']:.4f} | PR-AUC prueba {m['pr_auc']:.4f}")
+    print("Coeficientes:", {k: round(v, 4) for k, v in info["coeficientes"].items()})
 
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else "bothgridandfire (1).csv")
+    main(sys.argv[1] if len(sys.argv) > 1 else "bothgridandfire.csv")
