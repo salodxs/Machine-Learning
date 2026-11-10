@@ -101,6 +101,35 @@
       "mediana": 1.241685
     }
   },
+  "distancias": [
+    "Distriv",
+    "dist_roads",
+    "d_IR",
+    "d_II_III"
+  ],
+  "km_por_grado": 111.0,
+  "rangos_km": {
+    "Distriv": {
+      "min": 0.0,
+      "max": 6.4322835,
+      "mediana": 1.4930942999999999
+    },
+    "dist_roads": {
+      "min": 4.1440074000000005,
+      "max": 169.49034,
+      "mediana": 87.58166399999999
+    },
+    "d_IR": {
+      "min": 0.0,
+      "max": 80.496645,
+      "mediana": 36.8700375
+    },
+    "d_II_III": {
+      "min": 0.0,
+      "max": 202.89801,
+      "mediana": 127.87532999999999
+    }
+  },
   "coeficientes": {
     "d_IR": 0.8416689318108127,
     "d_II_III": -0.36995687543458644,
@@ -119,11 +148,11 @@
   "ejemplos": {
     "Zona deforestada con riesgo alto": {
       "valores": {
-        "lat": 2.092,
-        "Distriv": 0.00479,
-        "dist_roads": 0.229,
-        "d_IR": 15107.6961,
-        "d_II_III": 35366.4407
+        "lat": 2.207539325,
+        "Distriv": 0.00088889,
+        "dist_roads": 0.319512,
+        "d_IR": 0.450957,
+        "d_II_III": 0.643445
       },
       "real": 1
     },
@@ -139,11 +168,11 @@
     },
     "Zona sin deforestación (riesgo bajo)": {
       "valores": {
-        "lat": 2.278579325,
+        "lat": 2.038819325,
         "Distriv": 0.0151111,
-        "dist_roads": 1.41202,
-        "d_IR": 0.40031,
-        "d_II_III": 1.76684
+        "dist_roads": 1.49432,
+        "d_IR": 0.193429,
+        "d_II_III": 1.69191
       },
       "real": 0
     }

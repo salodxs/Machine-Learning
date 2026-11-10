@@ -43,6 +43,8 @@ SEMILLA_PARTICION = 42                                                # partici�
 SEMILLA_CV = 40                                                       # validación espacial definitiva
 META_RECALL = 0.80                                                    # escenario 1
 CAPACIDAD = 0.20                                                      # escenario 2: 20 % de zonas
+DISTANCIAS = ["Distriv", "dist_roads", "d_IR", "d_II_III"]            # en grados en el CSV
+KM_POR_GRADO = 111.0                                                  # 1 grado ≈ 111 km cerca del ecuador
 
 NOMBRES = {
     "lat": "Latitud",
@@ -125,10 +127,16 @@ def main(ruta_csv):
 
     rangos = {c: {"min": float(X_train[c].min()), "max": float(X_train[c].max()),
                   "mediana": float(X_train[c].median())} for c in PREDICTORES}
+    # Rangos en km (1 grado ≈ 111 km), solo con las filas cuyas distancias están en grados
+    en_grados = X_train[(X_train[VARIABLES_LOG] <= 2).all(axis=1)]
+    rangos_km = {c: {"min": float(en_grados[c].min() * KM_POR_GRADO), "max": float(en_grados[c].max() * KM_POR_GRADO),
+                     "mediana": float(en_grados[c].median() * KM_POR_GRADO)} for c in DISTANCIAS}
 
     # 7. Ejemplos reales del conjunto de prueba para la demostración
     prueba = X_test.copy()
     prueba["real"], prueba["prob"] = y_test.values, prob_test
+    # Solo zonas con distancias en grados (algunas filas del CSV traen d_IR y d_II_III en metros)
+    prueba = prueba[(prueba[VARIABLES_LOG] <= 2).all(axis=1)]
     pos, neg = prueba[prueba.real == 1], prueba[prueba.real == 0]
     ejemplos = {
         "Zona deforestada con riesgo alto": pos.sort_values("prob", ascending=False).iloc[2],
@@ -155,6 +163,9 @@ def main(ruta_csv):
         },
         "validacion_espacial": validacion_espacial,
         "rangos": rangos,
+        "distancias": DISTANCIAS,
+        "km_por_grado": KM_POR_GRADO,
+        "rangos_km": rangos_km,
         "coeficientes": dict(zip(nombres_transf, map(float, coefs))),
         "metricas_prueba": {"registros": int(len(y_test)), "positivos": int(y_test.sum()),
                             "bloques_prueba": int(grupos.iloc[test_idx].nunique()),

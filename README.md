@@ -15,7 +15,7 @@ deforestación** y una **alerta** según el escenario de uso elegido (8.2).
 | `modelo_final.joblib` | Pipeline completo guardado: log(1 + x), estandarización z-score, SMOTE y regresión logística |
 | `info_modelo.json` | Umbrales de los dos escenarios, variables, rangos de entrenamiento, métricas, coeficientes y ejemplos |
 | `bothgridandfire.csv` | Datos originales (Armenteras et al., 2017; Dryad, doi:10.5061/dryad.1925k) |
-| `requirements.txt` | Librerías (scikit-learn 1.6.1, la misma de Google Colab con que se entrenó) |
+| `requirements.txt` | Librerías de la app (scikit-learn 1.6.1, la misma de Google Colab). Para reentrenar, instalar además `pyproj` |
 
 ## Cómo ejecutarla
 
@@ -42,9 +42,10 @@ deforestación** y una **alerta** según el escenario de uso elegido (8.2).
 ## Cómo usarla
 
 - **Barra lateral:** elija el escenario (*Máxima detección* o *Capacidad de inspección limitada*) y vea sus métricas.
-- **Una zona:** escriba la latitud y las cuatro distancias, o cargue uno de los tres ejemplos reales del conjunto de
+- **Una zona:** escriba la latitud (grados decimales) y las cuatro distancias **en km** (la app las pasa a grados, la
+  unidad del conjunto de datos, con 1 grado ≈ 111 km), o cargue uno de los tres ejemplos reales del conjunto de
   prueba. Pulse **Predecir riesgo**. La app muestra la alerta de los dos escenarios y resalta el activo.
-- **Varias zonas (CSV):** descargue la plantilla, llénela, súbala y descargue los resultados con la probabilidad, la
+- **Varias zonas (CSV):** descargue la plantilla, llénela, súbala (distancias en las unidades originales del CSV, es decir, grados) y descargue los resultados con la probabilidad, la
   alerta de cada escenario y el orden de prioridad.
 - **Cómo usar:** explicación dentro de la misma app.
 
@@ -87,4 +88,6 @@ distancia a ríos −0,634 · distancia a áreas protegidas −0,370 · latitud 
 
 - La precisión es baja (unas 6 de cada 100 alertas son deforestación real): sirve para priorizar el monitoreo, no
   reemplaza la verificación en campo.
-- Solo se validó en la región y el periodo de los datos (Guaviare, 2000–2014).
+- Solo se validó en la región y el periodo de los datos (Guaviare, 2000–2014). Si se escriben distancias medidas hoy,
+  el resultado es el riesgo estimado con las condiciones actuales, no una predicción validada para 2026.
+- En el CSV original, unas 2.600 zonas traen `d_IR` y `d_II_III` en metros en lugar de grados.

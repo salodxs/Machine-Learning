@@ -36,7 +36,7 @@ COLUMNAS, NOM, ESC = info["predictores"], info["nombres"], info["escenarios"]
 NOMBRES_ESC = list(ESC)
 CORTOS = {"lat": "Latitud", "Distriv": "Ríos", "dist_roads": "Vías",
           "d_IR": "Resguardos indígenas", "d_II_III": "Áreas protegidas"}
-UNIDAD = {"lat": "grados decimales"}
+DIST_KM, KM = info["distancias"], info["km_por_grado"]
 
 
 def fmt(x, d=3):
@@ -139,23 +139,38 @@ with tab_una:
         real = info["ejemplos"][elegido]["real"]
         st.caption(f"Valor real de esta zona: **{'deforestada' if real == 1 else 'sin deforestación'}**.")
     else:
-        base = {c: info["rangos"][c]["mediana"] for c in COLUMNAS}
+        base = {c: (info["rangos_km"][c]["mediana"] / KM if c in DIST_KM else info["rangos"][c]["mediana"])
+                for c in COLUMNAS}
 
     with st.form("zona"):
-        st.markdown("**Características de la zona** (en las unidades del conjunto de datos original)")
+        st.markdown("**Características de la zona** · latitud en grados decimales y distancias en **kilómetros**")
         cols = st.columns(3)
-        fila = {}
+        fila, avisos_km = {}, []
         for i, c in enumerate(COLUMNAS):
-            r = info["rangos"][c]
-            fila[c] = cols[i % 3].number_input(
-                NOM[c] + (f" ({UNIDAD[c]})" if c in UNIDAD else ""),
-                min_value=None if c == "lat" else 0.0, value=float(base[c]), format="%.4f",
-                key=f"{elegido}_{c}",
-                help=f"Rango de entrenamiento: {r['min']:g} a {r['max']:g} · mediana {r['mediana']:g}")
+            if c in DIST_KM:
+                r = info["rangos_km"][c]
+                km = cols[i % 3].number_input(
+                    f"{NOM[c]} (km)", min_value=0.0, value=round(float(base[c]) * KM, 2), step=1.0, format="%.2f",
+                    key=f"{elegido}_{c}",
+                    help=f"Rango de entrenamiento: {r['min']:.1f} a {r['max']:.1f} km · mediana {r['mediana']:.1f} km")
+                fila[c] = km / KM          # el modelo trabaja en grados, como el CSV original
+                if km < r["min"] or km > r["max"]:
+                    avisos_km.append(f"**{NOM[c]}** = {km:g} km está fuera del rango de entrenamiento "
+                                     f"({r['min']:.1f} a {r['max']:.1f} km): el modelo estaría extrapolando.")
+            else:
+                r = info["rangos"][c]
+                fila[c] = cols[i % 3].number_input(
+                    f"{NOM[c]} (grados decimales)", value=float(base[c]), step=0.01, format="%.4f",
+                    key=f"{elegido}_{c}",
+                    help=f"Rango de entrenamiento: {r['min']:.3f} a {r['max']:.3f} · mediana {r['mediana']:.3f}")
         enviar = st.form_submit_button("Predecir riesgo", type="primary")
+    st.caption(f"Las distancias se convierten a grados (1 grado ≈ {KM:g} km), que es la unidad del conjunto de datos. "
+               "Si escribe distancias medidas hoy, el resultado es el riesgo estimado con las condiciones actuales: "
+               "el modelo aprendió con datos de 2000 a 2014 y no se ha validado en años recientes.")
 
     if enviar:
         errores, avisos = verificar(fila)
+        avisos = [a for a in avisos if not any(NOM[c] in a for c in DIST_KM)] + avisos_km
         for err in errores:
             st.error(err)
         for a in avisos:
@@ -195,7 +210,8 @@ with tab_una:
 
 # --- Pestaña 2: varias zonas -------------------------------------------------
 with tab_varias:
-    st.markdown(f"Suba un CSV con estas columnas: `{', '.join(COLUMNAS)}`. "
+    st.markdown(f"Suba un CSV con estas columnas: `{', '.join(COLUMNAS)}`, **en las mismas unidades del conjunto de "
+                "datos original** (distancias en grados, no en km), para poder evaluar filas del CSV directamente. "
                 "Se devuelve el mismo archivo con la probabilidad, la alerta de cada escenario y el orden de prioridad.")
     plantilla = pd.DataFrame([v["valores"] for v in info["ejemplos"].values()])[COLUMNAS]
     st.download_button("Descargar plantilla de ejemplo", plantilla.to_csv(index=False).encode("utf-8"),
@@ -233,7 +249,8 @@ with tab_varias:
 with tab_ayuda:
     e1, e2 = ESC[NOMBRES_ESC[0]], ESC[NOMBRES_ESC[1]]
     st.markdown(f"""
-**Qué hace la aplicación.** Recibe las 5 variables de una zona, les aplica exactamente el mismo
+**Qué hace la aplicación.** Recibe las 5 variables de una zona (en la pestaña *Una zona*, las distancias en km;
+la app las pasa a grados, la unidad del conjunto de datos, con 1 grado ≈ {KM:g} km), les aplica exactamente el mismo
 preprocesamiento del entrenamiento (log(1 + x) en las distancias a resguardos y a áreas protegidas, y
 estandarización z-score) y la regresión logística final, y devuelve la probabilidad de deforestación.
 
@@ -254,6 +271,9 @@ los datos de prueba.
 
 **Coherencia con el entrenamiento.** La aplicación bloquea valores vacíos o distancias negativas, y avisa si un
 valor queda fuera del rango visto en el entrenamiento, porque ahí el modelo estaría extrapolando.
+
+**Sobre el año.** El modelo aprendió con datos de 2000 a 2014. Si se escriben distancias medidas hoy, el resultado
+es una estimación del riesgo con las condiciones actuales, pero no se validó en años recientes.
 
 **Variables que no usa.** `yloss`, `fire` y `yfire` (fuga de información), las distancias a pérdidas de 2010 a
 2014, `rec2009c1` y `disedge09` (medidas después de muchas pérdidas) y la longitud (muy correlacionada con la
