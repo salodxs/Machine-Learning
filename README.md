@@ -56,15 +56,16 @@ deforestación** y una **alerta** según el escenario de uso elegido (8.2).
   aplica log(1 + x); luego todas se estandarizan. Se excluyó `long` por su alta correlación con `dist_roads`.
 - **Partición espacial:** coordenadas proyectadas a metros (EPSG:3116), bloques de 20 km (48 bloques); prueba = primer
   fold de `StratifiedGroupKFold` (9 bloques, 3.307 zonas, 95 deforestadas).
-- **Validación espacial (5 folds, umbral 0,5):** recall 0,757 · precisión 0,129 · F1 0,215 · ROC-AUC 0,781 · PR-AUC 0,157.
+- **Validación aleatoria (mezcla vecinos):** ROC-AUC 0,812. **Validación espacial (5 folds, umbral 0,5):** recall 0,757 · precisión 0,129 · F1 0,215 · ROC-AUC 0,781 · PR-AUC 0,157.
 
-| Escenario | Umbral | Recall | Precisión | F1 | Zonas señaladas | Detectadas |
-|---|---|---|---|---|---|---|
-| Máxima detección | 0,46 | 0,811 | 0,057 | 0,107 | 1.350 (40,8 %) | 77 de 95 |
-| Capacidad de inspección limitada | 0,6423 | 0,484 | 0,063 | 0,111 | 731 (22,1 %) | 46 de 95 |
+| Escenario | Umbral | Inspecciones | Deforestadas halladas | Visitas vacías por acierto | Veces mejor que al azar |
+|---|---|---|---|---|---|
+| Máxima detección | 0,46 | 1.350 (40,8 %) | 77 de 95 (81 %) | ~17 | 2,0 |
+| Capacidad de inspección limitada (recomendado) | 0,6423 | 731 (22,1 %) | 46 de 95 (48 %) | ~15 | 2,2 |
+| Presupuesto mínimo | 0,82 | 235 (7,1 %) | 11 de 95 (12 %) | ~20 | 1,6 |
 
-Los dos umbrales se eligieron con probabilidades fuera de fold del entrenamiento (validación espacial), no con la prueba:
-el primero es el que logra recall ≥ 0,80 con la mayor precisión; el segundo señala el 20 % de zonas con mayor probabilidad.
+Los tres umbrales se eligieron con probabilidades fuera de fold del entrenamiento (validación espacial), no con la prueba:
+el primero es el que logra recall ≥ 0,80 con la mayor precisión; el segundo y el tercero señalan el 20 % y el 10 % de zonas con mayor probabilidad. Se recomienda el 20 %: en validación espacial fue el punto más eficiente.
 
 **Coeficientes (log-odds por desviación estándar):** distancia a vías −1,078 · distancia a resguardos 0,842 ·
 distancia a ríos −0,634 · distancia a áreas protegidas −0,370 · latitud −0,166.

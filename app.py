@@ -79,55 +79,101 @@ def contribuciones(fila):
 # ---------------------------------------------------------------------------
 # Barra lateral: escenario y tarjeta del modelo
 # ---------------------------------------------------------------------------
-m, ve = info["metricas_prueba"], info["validacion_espacial"]
+m, ve, va = info["metricas_prueba"], info["validacion_espacial"], info["validacion_aleatoria"]
+RECOMENDADO = next((n for n in NOMBRES_ESC if "recomendado" in n), NOMBRES_ESC[0])
+
+
+def miles(x):
+    return f"{x:,.0f}".replace(",", ".")
+
+
 with st.sidebar:
     st.header("🌳 Tarjeta del modelo")
-    escenario = st.radio("Escenario de uso", NOMBRES_ESC,
-                         help="Lo único que cambia entre escenarios es el umbral de alerta.")
+    escenario = st.radio("Escenario de uso", NOMBRES_ESC, index=NOMBRES_ESC.index(RECOMENDADO),
+                         help="El modelo es el mismo; lo único que cambia entre escenarios es el umbral de alerta.")
     e = ESC[escenario]
     UMBRAL, pe = e["umbral"], e["prueba"]
-    st.markdown(f"**Umbral de alerta:** {fmt(UMBRAL, 4 if UMBRAL != round(UMBRAL, 2) else 2)}")
+    st.markdown(f"**Umbral de alerta:** {fmt(UMBRAL, 4)}")
     st.caption(e["descripcion"])
 
-    st.subheader("Desempeño en prueba")
-    st.caption(f"{m['registros']:,} zonas de {m['bloques_prueba']} bloques de 20 km que el modelo nunca vio "
-               f"({m['positivos']} deforestadas).".replace(",", "."))
-    c1, c2 = st.columns(2)
-    c1.metric("Recall", fmt(pe["recall"]))
-    c2.metric("Precisión", fmt(pe["precision"]))
-    c1.metric("F1", fmt(pe["f1"]))
-    c2.metric("Zonas señaladas", f"{fmt(pe['pct_senaladas'], 1)} %")
-    st.caption(f"Encontró **{pe['tp']} de {m['positivos']}** zonas deforestadas y señaló "
-               f"{pe['zonas_senaladas']:,} zonas en total.".replace(",", "."))
+    st.subheader("¿Qué significa en campo?")
+    st.caption(f"Resultado en {miles(m['registros'])} zonas de {m['bloques_prueba']} bloques de 20 km que el modelo "
+               f"nunca vio ({m['positivos']} deforestadas).")
+    st.markdown(f"#### {miles(pe['zonas_senaladas'])} inspecciones")
+    st.caption(f"{fmt(pe['pct_senaladas'], 1)} % del territorio")
+    st.markdown(f"#### {pe['tp']} de {m['positivos']} deforestadas halladas")
+    st.caption(f"{fmt(100 * pe['recall'], 0)} % de la deforestación")
+    st.markdown(f"- Por cada zona deforestada encontrada se revisan **~{pe['falsas_por_acierto']:.0f} zonas** que no "
+                f"lo estaban.\n"
+                f"- Revisando al azar el mismo número de zonas se encontrarían **~{pe['al_azar']:.0f}**: el modelo "
+                f"encuentra **{fmt(pe['veces_mejor_que_azar'], 1)} veces más**.")
+    with st.expander("Métricas técnicas"):
+        st.markdown(f"Recall {fmt(pe['recall'])} · Precisión {fmt(pe['precision'])} · F1 {fmt(pe['f1'])}  \n"
+                    f"ROC-AUC {fmt(m['roc_auc'])} · PR-AUC {fmt(m['pr_auc'])} (prevalencia {fmt(m['prevalencia'])})")
 
-    with st.expander("Comparar los dos escenarios"):
-        st.dataframe(pd.DataFrame({
-            n: {"Umbral": fmt(v["umbral"], 4), "Recall": fmt(v["prueba"]["recall"]),
-                "Precisión": fmt(v["prueba"]["precision"]), "F1": fmt(v["prueba"]["f1"]),
-                "Señaladas": f"{v['prueba']['zonas_senaladas']} ({fmt(v['prueba']['pct_senaladas'], 1)} %)",
-                "Detectadas": f"{v['prueba']['tp']} de {m['positivos']}"} for n, v in ESC.items()}),
-            width="stretch")
-
-    st.subheader("Validación espacial")
-    st.caption(f"Bloques de 20 km, 5 folds (umbral 0,5): recall {fmt(ve['recall']['media'])} · "
-               f"ROC-AUC {fmt(ve['roc_auc']['media'])} · PR-AUC {fmt(ve['pr_auc']['media'])}.")
+    st.subheader("¿Memoriza vecinos?")
+    st.caption(f"No: se evaluó en bloques de 20 km completos. Si se mezclan zonas vecinas (validación aleatoria) el "
+               f"ROC-AUC sale {fmt(va['roc_auc']['media'])}; separando por bloques baja a "
+               f"{fmt(ve['roc_auc']['media'])} y en los bloques de prueba a {fmt(m['roc_auc'])}. Reportamos los "
+               f"números bajos, que son los honestos.")
 
     st.subheader("Limitaciones")
-    st.markdown(f"- De cada 100 alertas, unas **{100 * pe['precision']:.0f}** son deforestación real.\n"
-                "- Sirve para **priorizar el monitoreo**, no reemplaza la verificación en campo.\n"
-                "- Solo se validó en la región y el periodo de los datos (Guaviare, 2000–2014).")
+    st.markdown("- Sirve para **priorizar** el monitoreo, no reemplaza la verificación en campo.\n"
+                "- Solo se validó dentro del Guaviare y con datos de 2000–2014.")
 
 
 # ---------------------------------------------------------------------------
 # Contenido principal
 # ---------------------------------------------------------------------------
-st.title("Riesgo de deforestación por zona")
-st.markdown("Estima la probabilidad de que una zona del Guaviare (Amazonía colombiana) se deforeste, a partir de su "
-            "latitud y de sus distancias a ríos, vías, resguardos indígenas y áreas protegidas. "
-            "Reproduce, con datos colombianos, el objetivo de **Rosa et al. (2013)**.")
+st.title("¿Dónde vigilar primero?")
+st.markdown("**Si solo podemos inspeccionar una fracción del territorio, ¿dónde concentrar la vigilancia para "
+            "detectar más deforestación?** Esta herramienta estima el riesgo de deforestación de cada zona del "
+            "Guaviare a partir de su latitud y de sus distancias a ríos, vías, resguardos indígenas y áreas "
+            "protegidas, y la ordena para priorizar las visitas de campo.")
 st.info(f"Escenario activo: **{escenario}** · umbral **{fmt(UMBRAL, 4)}**. Puede cambiarlo en la barra lateral.")
 
-tab_una, tab_varias, tab_ayuda = st.tabs(["🔎 Una zona", "📄 Varias zonas (CSV)", "ℹ️ Cómo usar"])
+tab_esc, tab_una, tab_varias, tab_ayuda = st.tabs(
+    ["📊 Escenarios", "🔎 Una zona", "📄 Varias zonas (CSV)", "ℹ️ Cómo usar"])
+
+# --- Pestaña 0: escenarios de negocio -----------------------------------------
+with tab_esc:
+    st.markdown(f"Resultados en **{miles(m['registros'])} zonas** de bloques que el modelo nunca vio, con "
+                f"**{m['positivos']} zonas deforestadas**. Al azar, 1 de cada {1 / m['prevalencia']:.0f} zonas "
+                "revisadas estaría deforestada.")
+    filas = []
+    for n, v in ESC.items():
+        q = v["prueba"]
+        filas.append({"Escenario": n, "Umbral": fmt(v["umbral"], 4),
+                      "Inspecciones": f"{miles(q['zonas_senaladas'])} ({fmt(q['pct_senaladas'], 1)} %)",
+                      "Deforestadas halladas": f"{q['tp']} de {m['positivos']} ({fmt(100 * q['recall'], 0)} %)",
+                      "Se escapan": q["fn"],
+                      "Visitas vacías": miles(q["fp"]),
+                      "Visitas vacías por acierto": f"~{q['falsas_por_acierto']:.0f}",
+                      "Al azar hallaría": f"~{q['al_azar']:.0f}"})
+    st.dataframe(pd.DataFrame(filas).set_index("Escenario"), width="stretch")
+    st.caption("Visitas vacías: zonas inspeccionadas que no estaban deforestadas. ★ = escenario recomendado.")
+
+    CORTO_ESC = {n: n.replace("Capacidad de inspección limitada (recomendado)", "Capacidad limitada ★") for n in ESC}
+    graf_df = pd.DataFrame([{"Escenario": CORTO_ESC[n], "Tipo": t, "Zonas": v["prueba"][k]}
+                            for n, v in ESC.items()
+                            for t, k in [("Deforestadas halladas", "tp"), ("Visitas vacías", "fp")]])
+    graf = alt.Chart(graf_df).mark_bar().encode(
+        y=alt.Y("Escenario:N", sort=list(CORTO_ESC.values()), title=None,
+                axis=alt.Axis(labelLimit=320, labelFontSize=13, labelOverlap=False)),
+        x=alt.X("Zonas:Q", title="Zonas inspeccionadas"),
+        color=alt.Color("Tipo:N", scale=alt.Scale(domain=["Deforestadas halladas", "Visitas vacías"],
+                                                  range=["#D9622B", "#C9CFC9"]), legend=alt.Legend(orient="bottom")),
+        order=alt.Order("Tipo:N", sort="ascending"),
+        tooltip=["Escenario", "Tipo", "Zonas"]).properties(height=240, title="¿Cuánto cuesta cada escenario en inspecciones?")
+    st.altair_chart(graf, width="stretch")
+
+    r = ESC[RECOMENDADO]
+    st.success(f"**Recomendación: {RECOMENDADO}** (umbral {fmt(r['umbral'], 4)}). Revisando el "
+               f"{fmt(r['prueba']['pct_senaladas'], 0)} % del territorio se encuentra el "
+               f"{fmt(100 * r['prueba']['recall'], 0)} % de la deforestación, "
+               f"{fmt(r['prueba']['veces_mejor_que_azar'], 1)} veces más que revisando al azar. En validación espacial "
+               "fue el punto más eficiente: con menos inspecciones se pierde mucha detección y con más, cada "
+               "inspección extra rinde menos.")
 
 # --- Pestaña 1: una zona -----------------------------------------------------
 with tab_una:
@@ -237,9 +283,9 @@ with tab_varias:
                 for n, v in ESC.items():
                     datos[f"alerta_{n}"] = np.where(datos["probabilidad"] >= v["umbral"], "Sí", "No")
                 datos["prioridad"] = datos["probabilidad"].rank(ascending=False, method="first").astype(int)
-                c1, c2, c3 = st.columns(3)
-                c1.metric("Zonas evaluadas", f"{len(datos):,}".replace(",", "."))
-                for col, (n, v) in zip([c2, c3], ESC.items()):
+                cols_m = st.columns(len(ESC) + 1)
+                cols_m[0].metric("Zonas evaluadas", f"{len(datos):,}".replace(",", "."))
+                for col, (n, v) in zip(cols_m[1:], ESC.items()):
                     col.metric(f"Alertas · {n}", f"{(datos[f'alerta_{n}'] == 'Sí').sum():,}".replace(",", "."))
                 st.dataframe(datos.sort_values("prioridad"), width="stretch")
                 st.download_button("Descargar resultados", datos.to_csv(index=False).encode("utf-8"),
@@ -247,21 +293,19 @@ with tab_varias:
 
 # --- Pestaña 3: ayuda --------------------------------------------------------
 with tab_ayuda:
-    e1, e2 = ESC[NOMBRES_ESC[0]], ESC[NOMBRES_ESC[1]]
+    lista_esc = "\n".join(f"- *{n}* (umbral {fmt(v['umbral'], 4)}): {v['descripcion']} En prueba encontró "
+                          f"{v['prueba']['tp']} de {m['positivos']} revisando el {fmt(v['prueba']['pct_senaladas'], 1)} % de las zonas."
+                          for n, v in ESC.items())
     st.markdown(f"""
 **Qué hace la aplicación.** Recibe las 5 variables de una zona (en la pestaña *Una zona*, las distancias en km;
 la app las pasa a grados, la unidad del conjunto de datos, con 1 grado ≈ {KM:g} km), les aplica exactamente el mismo
 preprocesamiento del entrenamiento (log(1 + x) en las distancias a resguardos y a áreas protegidas, y
 estandarización z-score) y la regresión logística final, y devuelve la probabilidad de deforestación.
 
-**Los dos escenarios.** El modelo es el mismo; solo cambia el umbral:
-- *{NOMBRES_ESC[0]}* (umbral {fmt(e1['umbral'], 2)}): se eligió para encontrar al menos 80 de cada 100 zonas
-  deforestadas. En prueba encontró {e1['prueba']['tp']} de {m['positivos']}, pero señala el
-  {fmt(e1['prueba']['pct_senaladas'], 1)} % de las zonas.
-- *{NOMBRES_ESC[1]}* (umbral {fmt(e2['umbral'], 4)}): señala solo el 20 % de zonas con mayor probabilidad, para
-  cuando no se pueden visitar todas. En prueba encontró {e2['prueba']['tp']} de {m['positivos']}.
+**Los tres escenarios.** El modelo es el mismo; solo cambia el umbral:
+{lista_esc}
 
-Ambos umbrales se eligieron con probabilidades fuera de fold del entrenamiento (validación espacial), nunca con
+Los umbrales se eligieron con probabilidades fuera de fold del entrenamiento (validación espacial), nunca con
 los datos de prueba.
 
 **Cómo leer el resultado.**
