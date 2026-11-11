@@ -171,9 +171,10 @@ with tab_esc:
     st.success(f"**Recomendación: {RECOMENDADO}** (umbral {fmt(r['umbral'], 4)}). Revisando el "
                f"{fmt(r['prueba']['pct_senaladas'], 0)} % del territorio se encuentra el "
                f"{fmt(100 * r['prueba']['recall'], 0)} % de la deforestación, "
-               f"{fmt(r['prueba']['veces_mejor_que_azar'], 1)} veces más que revisando al azar. En validación espacial "
-               "fue el punto más eficiente: con menos inspecciones se pierde mucha detección y con más, cada "
-               "inspección extra rinde menos.")
+               f"{fmt(r['prueba']['veces_mejor_que_azar'], 1)} veces más que revisando al azar. En validación espacial, "
+               "revisar el 20 % rindió casi lo mismo por visita que revisar el 10 %, pero encontró el doble de "
+               "deforestación; pasando del 25 %, cada visita empieza a rendir menos. Si la entidad tiene "
+               "capacidad para revisar algo más (hasta un 25 %), también es una buena opción.")
 
 # --- Pestaña 1: una zona -----------------------------------------------------
 with tab_una:

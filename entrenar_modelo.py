@@ -172,8 +172,9 @@ def main(ruta_csv):
                 "prueba": evaluar(y_test, prob_test, umbral_1)},
             "Capacidad de inspección limitada (recomendado)": {
                 "umbral": umbral_2,
-                "descripcion": "Señala el 20 % de zonas con mayor probabilidad. Es el punto más eficiente en validación "
-                               "espacial: más inspecciones casi no mejoran la eficiencia y menos pierden mucha detección.",
+                "descripcion": "Señala el 20 % de zonas con mayor probabilidad. En validación espacial, cada visita rindió "
+                               "casi lo mismo que revisando solo el 10 %, pero se encontró el doble de deforestación; "
+                               "revisar mucho más del 25 % hace que cada visita rinda menos.",
                 "entrenamiento_oof": evaluar(y_train, prob_oof, umbral_2),
                 "prueba": evaluar(y_test, prob_test, umbral_2)},
             "Presupuesto mínimo": {
